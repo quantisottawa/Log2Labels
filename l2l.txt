@@ -1,0 +1,100 @@
+#!/bin/bash
+
+############################################################################
+# Log2Label V1.0                                                           #
+# By: Stephen Switzer October 2024                                         #
+# Read in a .adi log file and create lables from a QRZ.com address lookup  #
+############################################################################
+
+
+CSV=0 #Default CSV mode to OFF
+NA=0 #Default North American Only mode to OFF
+
+usage() { echo "Usage: $0 [-u <QRZ_username>] [-p <QRZ_password>] [ Logfile.adi ]"
+	echo "options:"
+	echo "-h Help"
+	echo "-c Output in CSV format " 
+	echo "-n Output North American (Can/USA) addresses only" 1>&2; exit 1; }
+
+
+if [ "$#" -eq 0 ]; then usage; fi
+if [ "$1" == "-h" ] ||  [ "$1" == "-H" ]; then usage; fi
+
+for ((i=1;i<=$#;i++))
+do
+	next=$((i+1))
+	#echo "$#" "$i" "${!i}" "${!next}"
+	if [ "${!i}" == "-u" ] || [ "${!i}" == "-U" ]; then USER=${!next}; fi
+	if [ "${!i}" == "-p" ] || [ "${!i}" == "-P" ]; then PASS=${!next}; fi
+	if [ "${!i}" == "-c" ] || [ "${!i}" == "-C" ]; then CSV=1; fi
+	if [ "${!i}" == "-n" ] || [ "${!i}" == "-N" ]; then NA=1; fi
+done
+
+
+LOGFILE=${!#}
+KEY=$(curl -k -sS https://xmldata.qrz.com/xml/current/?username=$USER\;password=$PASS | grep Key | cut -d ">" -f2 | cut -d "<" -f1)
+QSOCOUNT=$(cat $LOGFILE | grep -c \<eor\>)
+if [ "$CSV" == "1" ] ; then echo "CALL,NAME,ADDRESS,CITY,STATE,ZIP,COUNTRY,FREQ,MODE,DATE,TIME" ; fi  #Output CSV Header if in CSV format
+
+
+for i in $(seq 1 $QSOCOUNT);
+do
+
+	if [[ "$i" = "1" ]]; then
+		QSO=$(cat $LOGFILE | grep -B 40 -m 1 \<eor\> )  #Get first QSO
+	else
+		QSO=$(cat $LOGFILE | grep -m $i -B 50 \<eor\> | tac | grep -B 50 -m 2 \<eor\> ) # Get all subsequent QSOs
+	fi
+
+
+	CALL=$(echo "$QSO" | grep call: | cut -d '>' -f 2)
+	QRZ_INFO=$(curl -k -sS https://xmldata.qrz.com/xml/current/?s=$KEY\;callsign=$CALL)
+	FNAME=$(echo "$QRZ_INFO" | awk -F "[><]" '/<name_fmt>/{ print $3 }')
+	ADDR1=$(echo "$QRZ_INFO" | awk -F "[><]" '/<addr1>/{ print $3 }')
+	ADDR2=$(echo "$QRZ_INFO" | awk -F "[><]" '/<addr2>/{ print $3 }')
+	STATE=$(echo "$QRZ_INFO" | awk -F "[><]" '/<state>/{ print $3 }')
+	ZIP=$(echo "$QRZ_INFO" | awk -F "[><]" '/<zip>/{ print $3 }')
+	LAND=$(echo "$QRZ_INFO" | awk -F "[><]" '/<land>/{ print $3 }')
+	FREQ=$(echo "$QSO" | awk -F "[><]" '/<freq:7>/{ print $3 }' )
+	MODE=$(echo "$QSO" | awk -F "[><]" '/<mode:3>/{ print $3 }' )
+
+	if [ "$NA" == "1" ] && [ "$LAND" != "United States" ] && [ "$LAND" != "Canada" ] ; then continue; fi #Check for NA mode and that the Address is from Can/USA
+
+	# QSODATE=$(echo "$QSO" | grep qso_date: | cut -d '>' -f 2 )
+	QSODATE=$(echo "$QSO" | grep qso_date | cut -d '>' -f 2 | head -n 1) # handles missing dates and pulls from other date fields if necessary
+	QSOYEAR=$(echo "$QSODATE" | cut -c1-4 )
+	QSOMONTH=$(echo "$QSODATE" | cut -c5-6 )
+	QSODAY=$(echo "$QSODATE" | cut -c7-8 )
+	QSOHOUR=$(echo "$QSO" | grep time_off: | cut -d '>' -f 2 | cut -c1-2 )
+	QSOMINUTE=$(echo "$QSO" | grep time_off: | cut -d '>' -f 2 | cut -c3-4 )
+
+
+	if [ "$CSV" == "1" ] ; then #OUTPUT in CSV Format
+		echo "$CALL,$FNAME,$ADDR1,$ADDR2,$STATE,$ZIP,$LAND,$FREQ,$MODE,$QSOYEAR-$QSOMONTH-$QSODAY,$QSOHOUR:$QSOMINUTE"
+
+	else    #OUTPUT Human Readable
+
+		echo "$FNAME $CALL"
+		echo "$ADDR1"
+		echo "$ADDR2, $STATE, $ZIP"
+		echo "$LAND"
+		echo " "
+		echo "Frequency: $FREQ Mode: $MODE"
+		echo "$QSOYEAR-$QSOMONTH-$QSODAY  $QSOHOUR:$QSOMINUTE"
+		echo " "
+
+	fi
+
+done
+
+
+
+
+
+
+
+
+
+
+
+
