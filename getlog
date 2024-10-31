@@ -1,0 +1,55 @@
+#!/bin/bash
+
+
+############################################################################
+# GetLog V1.0                                                              #
+# By: Stephen Switzer October 2024                                         #
+# Downlaod QSO's from QRZ.com based off you logbook api key                #
+############################################################################
+
+
+usage() { echo "Usage: $0 [-k <QRZ_Log_API_Key>] [-c #of Logs to fetch ] "
+        echo "options:"
+        echo "-h Help"
+        echo "-c The number of logs to fetch, Defaults to 1, To fetch all logs use 0 "
+	echo "-k QRZ API Key in the format 'XXXX-XXXX-XXXX-XXXX' or point to a file that contains the key" 1>&2; exit 1; }
+
+
+if [ "$#" -eq 0 ]; then usage; fi
+if [ "$1" == "-h" ] ||  [ "$1" == "-H" ]; then usage; fi
+
+
+for ((i=1;i<=$#;i++))  #Parse command line variables
+do
+        next=$((i+1))
+        if [ "${!i}" == "-k" ] || [ "${!i}" == "-K" ]; then KEY=${!next}; fi
+        if [ "${!i}" == "-c" ] || [ "${!i}" == "-C" ]; then LOGCOUNT=${!next}; fi
+done
+
+
+if [ -f "${KEY}" ]; then KEY=$(cat ${KEY}); fi    # Check that the variable KEY is FILE and if so read that file to set the KEY variable.
+if [ -z "$LOGCOUNT" ] ; then LOGCOUNT=0; fi	# Number of QSO's to download, defaults to 'everything'.
+
+
+case $LOGCOUNT in    # Check that variable is a number
+    ''|*[!0-9]*) LOGCOUNT=0 ;;
+        *) ;;
+	esac
+
+
+LOGIDS=($(curl -k -Ss https://logbook.qrz.com/api?KEY=$KEY\;ACTION=FETCH\&OPTION=TYPE:LOGIDS | tr ',' '\n' | sed "s/&RESULT=OK//" | sed "s/.*LOGIDS=//" ))	# Gets the QRZ 'logids' to be processed
+
+
+if [ "$LOGCOUNT" -gt "${#LOGIDS[@]}" ]; then LOGCOUNT=${#LOGIDS[@]}; fi
+if [ "$LOGCOUNT" == "0" ]; then LOGCOUNT=${#LOGIDS[@]}; fi
+if [ "$LOGCOUNT" -gt "100" ]; then MAXLOGS=100; else MAXLOGS=$LOGCOUNT; fi
+
+
+for ((i=0;i<=$(( $LOGCOUNT -1 ));i++))
+do
+	if [ "$(( $LOGCOUNT - $i ))" -lt "$MAXLOGS" ]; then MAXLOGS=$(( $LOGCOUNT - $i )); fi 	# For the last loop only fetch the remaining number of requested QSOs
+	#curl -k -Ss https://logbook.qrz.com/api?KEY=$KEY\;ACTION=FETCH\&OPTION=MAX:$MAXLOGS,AFTERLOGID:${LOGIDS[$i]},TYPE:LOGIDS  # Only fetches LOGIDs, Useful for diagnostics
+	curl -k -Ss https://logbook.qrz.com/api?KEY=$KEY\;ACTION=FETCH\&OPTION=MAX:$MAXLOGS,AFTERLOGID:${LOGIDS[$i]} | sed "s/&lt;/</" | sed "s/&gt;/>/" | sed "s/ADIF=//" | sed "s/COUNT=.*&//" | sed "s/&COUNT=.*//"| sed "s/&RESULT=OK//" | sed "s/RESULT=OK&//"
+	i=$(($i+99))	
+done
+
