@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ############################################################################
-# Log2Label V1.0                                                           #
-# By: Stephen Switzer October 2024                                         #
+# Log2Label V1.1                                                           #
+# By: Stephen Switzer December 2024                                        #
 # Read in a .adi log file and create lables from a QRZ.com address lookup  #
 ############################################################################
 
@@ -10,11 +10,12 @@
 CSV=0 #Default CSV mode to OFF
 NA=0 #Default North American Only mode to OFF
 
-usage() { echo "Usage: $0 [-u <QRZ_username>] [-p <QRZ_password>] [ Logfile.adi ]"
+usage() { echo "Usage: $0 [-u <QRZ_username>] [-p <QRZ_password>] [-k <keyfile>][ Logfile.adi ]"
 	echo "options:"
 	echo "-h Help"
 	echo "-c Output in CSV format " 
-	echo "-n Output North American (Can/USA) addresses only" 1>&2; exit 1; }
+	echo "-n Output North American (Can/USA) addresses only"
+	echo "-k Keyfile has two lines, Username on the first line and password on the second line" 1>&2; exit 1; }
 
 
 if [ "$#" -eq 0 ]; then usage; fi
@@ -28,7 +29,13 @@ do
 	if [ "${!i}" == "-p" ] || [ "${!i}" == "-P" ]; then PASS=${!next}; fi
 	if [ "${!i}" == "-c" ] || [ "${!i}" == "-C" ]; then CSV=1; fi
 	if [ "${!i}" == "-n" ] || [ "${!i}" == "-N" ]; then NA=1; fi
+	if [ "${!i}" == "-k" ] || [ "${!i}" == "-K" ]; then KEYFILE=${!next}; fi
 done
+
+if [ -f "${KEYFILE}" ]; then USER=$(head -n1 ${KEYFILE}); PASS=$(head -n2 ${KEYFILE} | tail -n1) ; fi    # Check that the variable KEY is FILE and if so read that file to set the USER/PASS variables.
+if [ -z "${USER}" ]; then usage; fi
+if [ -z "${PASS}" ]; then usage; fi
+
 
 
 LOGFILE=${!#}
@@ -86,15 +93,3 @@ do
 	fi
 
 done
-
-
-
-
-
-
-
-
-
-
-
-
